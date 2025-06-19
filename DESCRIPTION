@@ -1,0 +1,33 @@
+Package: ShennongWrappers
+Type: Package
+Title: Tidy Wrappers for Bioinformatics Workflows
+Version: 0.1.0
+Date: 2025-06-19
+Authors@R: c(
+    person("Songqi", "Duan", , "duan@songqi.org", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-0822-5883"))
+  )
+Description: Provides modern, tidyverse-style wrapper functions for commonly used
+    bioinformatics tools and workflows. The package is designed to streamline and
+    standardize tasks in transcriptomics, single-cell RNA-seq, epigenomics, and
+    other multi-omics analyses. 
+License: GPL (>= 3)
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    cli,
+    dplyr,
+    glue,
+    Matrix,
+    pak,
+    purrr,
+    rlang,
+    tibble
+Remotes: 
+    PaulingLiu/ROGUE
+RoxygenNote: 7.3.2
+Roxygen: list(markdown = TRUE)
+Depends: 
+    R (>= 4.1.0)
+Suggests: 
+    SeuratObject
