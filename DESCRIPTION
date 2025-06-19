@@ -16,13 +16,11 @@ Encoding: UTF-8
 LazyData: true
 Imports: 
     cli,
-    dplyr,
     glue,
     Matrix,
     pak,
-    purrr,
     rlang,
-    tibble
+    utils
 Remotes: 
     PaulingLiu/ROGUE
 RoxygenNote: 7.3.2
@@ -30,4 +28,5 @@ Roxygen: list(markdown = TRUE)
 Depends: 
     R (>= 4.1.0)
 Suggests: 
+    ROGUE (>= 1.0),
     SeuratObject

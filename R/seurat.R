@@ -1,44 +1,29 @@
 #' Calculate ROGUE Score(s) from a Seurat Object
 #'
-#' Computes entropy-based **ROGUE** scores to assess cluster purity from a Seurat object.
-#' This function supports three usage modes:
+#' Computes **ROGUE** (entropy-based) scores to evaluate cell population purity
+#' from a Seurat object. Supports both global and per-cluster ROGUE computation.
 #'
-#' - **Full dataset ROGUE** calculation (no cluster provided)
-#' - **Per-cluster ROGUE** (when both `cluster` and `sample` are provided)
-#' - **Multi-resolution ROGUE comparison**, using multiple `cluster` columns
+#' ## Modes:
+#' - If `clusters` and `label` are both `NULL`, computes global ROGUE score across all cells.
+#' - If both are provided, computes per-cluster ROGUE scores across samples.
 #'
-#' @param x A Seurat object containing a `counts` layer.
-#' @param cluster A character vector of one or more clustering columns in the metadata (`x@meta.data`).
-#'   If multiple, calculates mean ROGUE per column and identifies the elbow/knee point.
-#' @param sample *(Optional)* Column name indicating sample identity; required for per-cluster ROGUE.
-#' @param span Smoothing parameter for [ROGUE::rogue()] when `sample` is used. Default: `0.9`.
-#' @param min_cells Minimum number of cells a gene must be expressed in. Default: `10`.
-#' @param min_genes Minimum number of genes a cell must express. Default: `10`.
-#' @param platform Either `"UMI"` (droplet-based) or `"full-length"` (SMART-seq, etc.).
-#' @param cutoff Adjusted p-value cutoff for [ROGUE::CalculateRogue()]. Default: `0.05`.
-#' @param features *(Optional)* Character vector of gene names to use. If `NULL`, all filtered genes are used.
-#' @param verbose Whether to show progress messages. Default: `TRUE`.
+#' @param x A Seurat object with a `counts` layer.
+#' @param clusters *(optional)* Character vector of metadata column names containing clustering info.
+#'   If provided, `label` must also be provided.
+#' @param label *(optional)* A metadata column name specifying sample identity. Required when `clusters` is used.
+#' @param span Smoothing parameter used in `ROGUE::rogue()` when `clusters` and `label` are used. Default is `0.9`.
+#' @param min_cells Minimum number of cells a gene must be detected in. Default: `10`.
+#' @param min_genes Minimum number of genes each cell must express. Default: `10`.
+#' @param platform Character string, either `"UMI"` or `"full-length"` to match sequencing platform. Default: `"UMI"`.
+#' @param cutoff Adjusted p-value threshold for `CalculateRogue`. Default: `0.05`.
+#' @param features Optional gene list to use for scoring.
+#' @param verbose Logical, whether to print messages. Default: `TRUE`.
 #'
-#' @return A `data.frame` with ROGUE results:
-#'
-#' - For **multi-resolution comparison**:
-#'   Returns columns: `cluster`, `average_rogue`, `is_knee_point`.
-#'
-#' - For **per-cluster analysis**:
-#'   Returns per-cluster ROGUE scores.
-#'
-#' - For **global** (no cluster):
-#'   Returns ROGUE score vector.
-#'
-#' @details
-#' The **ROGUE** (Relative entropy Of Gene Usage Entropy) score quantifies the homogeneity of a cell population
-#' using Shannon entropy. High ROGUE scores indicate purer (i.e., less heterogeneous) cell groups.
-#'
-#' This function wraps around:
-#'
-#' - [ROGUE::SE_fun()]
-#' - [ROGUE::CalculateRogue()]
-#' - [ROGUE::rogue()]
+#' @return A `data.frame` containing:
+#' - `label`: Sample identity or "All"
+#' - `cluster`: Cluster identity
+#' - `score`: ROGUE score
+#' - `group`: Source of the score (for faceting)
 #'
 #' @references
 #' Liu, B., Li, C., Li, Z., Wang, D., Ren, X., & Zhang, Z. (2020).
@@ -48,24 +33,20 @@
 #'
 #' @examples
 #' \dontrun{
-#' library(Seurat)
-#' seurat_obj <- CreateSeuratObject(counts = example_matrix)
-#' seurat_obj <- FindClusters(seurat_obj, resolution = c(0.2, 0.4, 0.6))
-#'
-#' # Multi-resolution comparison
-#' sn_calculate_rogue(seurat_obj, cluster = c("RNA_snn_res.0.2", "RNA_snn_res.0.4", "RNA_snn_res.0.6"))
-#'
-#' # Per-cluster ROGUE
-#' sn_calculate_rogue(seurat_obj, cluster = "seurat_clusters", sample = "sample_id")
-#'
-#' # Global ROGUE
+#' # Global ROGUE score
 #' sn_calculate_rogue(seurat_obj)
+#'
+#' # Per-cluster ROGUE score
+#' sn_calculate_rogue(seurat_obj, clusters = "seurat_clusters", label = "sample")
+#'
+#' # Multiple clustering resolutions
+#' sn_calculate_rogue(seurat_obj, clusters = c("res_0.4", "res_1.0"), label = "sample")
 #' }
 #'
 #' @export
 sn_calculate_rogue <- function(x,
-                               cluster = NULL,
-                               sample = NULL,
+                               clusters = NULL,
+                               label = NULL,
                                span = 0.9,
                                min_cells = 10,
                                min_genes = 10,
@@ -77,93 +58,66 @@ sn_calculate_rogue <- function(x,
   check_installed("SeuratObject", reason = "to extract counts from Seurat")
 
   if (!inherits(x, "Seurat")) {
-    cli_abort("Input {.arg x} must be a Seurat object.")
+    stop("Input `x` must be a Seurat object.")
   }
 
   if (!"counts" %in% SeuratObject::Layers(x)) {
-    cli_abort("The {.code 'counts'} layer is not found in the Seurat object.")
+    stop("The 'counts' layer is not found in the Seurat object.")
   }
-  platform <- arg_match(platform, c("UMI", "full-length"))
+
+  platform <- match.arg(platform, c("UMI", "full-length"))
 
   metadata <- x[[]]
-  counts <- SeuratObject::LayerData(x, layer = "counts") |>
-    Matrix::as.matrix()
 
-  if (verbose) cli_alert_info("Filtering matrix (min.cells = {min_cells}, min.genes = {min_genes})...")
+  # Check metadata columns
+  if (!is.null(clusters) && any(!clusters %in% colnames(metadata))) {
+    stop("Some elements in `clusters` are not found in metadata columns: ",
+         paste(setdiff(clusters, colnames(metadata)), collapse = ", "))
+  }
+  if (xor(is.null(clusters), is.null(label))) {
+    stop("`clusters` and `label` must either both be provided or both be NULL.")
+  }
+
+  counts <- SeuratObject::LayerData(x, layer = "counts")
+  counts <- Matrix::as.matrix(counts)
+
+
   counts <- ROGUE::matr.filter(counts, min.cells = min_cells, min.genes = min_genes)
-
-  if (verbose) cli_alert_info("Calculating entropy...")
   entropy <- ROGUE::SE_fun(counts)
+  all_score <- ROGUE::CalculateRogue(entropy, platform = platform, cutoff = cutoff, features = features)
 
-  # Multi-cluster average ROGUE mode
-  if (length(cluster) > 1) {
-    cluster <- as_character(cluster)
-
-    if (!all(cluster %in% colnames(metadata))) {
-      missing <- setdiff(cluster, colnames(metadata))
-      cli_abort("Column(s) {.val {missing}} not found in metadata.")
-    }
-
-    if (verbose) cli_alert_info("Calculating average ROGUE score for {length(cluster)} clustering resolutions...")
-
-    rogue_df <- purrr::map_dfr(cluster, function(clust) {
-      labels <- as.character(metadata[[clust]])
-      scores <- ROGUE::CalculateRogue(
-        entropy,
-        platform = platform,
-        cutoff = cutoff,
-        features = features
-      )
-      tibble::tibble(cluster = clust, average_rogue = mean(scores, na.rm = TRUE))
-    })
-
-    # Elbow/knee point detection (largest jump in rogue score)
-    rogue_df <- rogue_df |> dplyr::arrange(cluster)
-    d_diff <- diff(rogue_df$average_rogue)
-    knee_idx <- which.max(d_diff) + 1
-    rogue_df$is_knee_point <- seq_len(nrow(rogue_df)) == knee_idx
-
-    if (verbose) {
-      knee_label <- rogue_df$cluster[knee_idx]
-      cli_alert_success("Best resolution candidate: {.val {knee_label}} (detected by elbow method)")
-    }
-
-    return(rogue_df)
-  }
-
-  # Per-cluster ROGUE (requires sample + single cluster)
-  if (!is.null(cluster) && !is.null(sample)) {
-    cluster <- as_string(cluster)
-    sample <- as_string(sample)
-
-    if (!cluster %in% colnames(metadata)) {
-      cli_abort("Column {.val {cluster}} not found in metadata.")
-    }
-    if (!sample %in% colnames(metadata)) {
-      cli_abort("Column {.val {sample}} not found in metadata.")
-    }
-
-    if (verbose) cli_alert_info("Calculating ROGUE per cluster (by sample)...")
-
-    rogue_result <- ROGUE::rogue(
-      expr = counts,
-      labels = as.character(metadata[[cluster]]),
-      samples = as.character(metadata[[sample]]),
-      platform = platform,
-      span = span
+  result_list <- list(
+    data.frame(
+      label = "All",
+      name = "All",
+      value = all_score,
+      group = "All",
+      stringsAsFactors = FALSE
     )
+  )
 
-    rogue_result <- as.data.frame(rogue_result)
-    rogue_result$cluster <- rownames(rogue_result)
-    rownames(rogue_result) <- NULL
+  if (!is.null(clusters)) {
+    for (cluster in clusters) {
+      if (verbose) message("Calculating ROGUE for cluster: ", cluster)
+      rogue_result <- ROGUE::rogue(
+        expr = counts,
+        labels = as.character(metadata[[cluster]]),
+        samples = as.character(metadata[[label]]),
+        platform = platform,
+        span = span
+      )
 
-    if (verbose) cli_alert_success("ROGUE score calculation completed.")
-    return(rogue_result)
+      df <- stack(as.data.frame(rogue_result))
+      df$label <- rownames(rogue_result)
+      df$group <- cluster
+      names(df)[1:2] <- c("value", "name")
+
+      result_list[[length(result_list) + 1]] <- df
+    }
   }
 
-  # Fallback: full dataset rogue score
-  if (verbose) cli_alert_info("Calculating ROGUE score for all cells (no cluster provided)...")
-
-  rogue_result <- ROGUE::CalculateRogue(entropy, platform = platform)
-  return(rogue_result)
+  result_df <- do.call(rbind, result_list)
+  result_df$group <- factor(result_df$group, levels = c("All", clusters))
+  colnames(result_df) <- c("label", "cluster", "score", "group")
+  return(result_df)
 }

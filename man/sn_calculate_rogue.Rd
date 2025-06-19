@@ -6,8 +6,8 @@
 \usage{
 sn_calculate_rogue(
   x,
-  cluster = NULL,
-  sample = NULL,
+  clusters = NULL,
+  label = NULL,
   span = 0.9,
   min_cells = 10,
   min_genes = 10,
@@ -18,73 +18,58 @@ sn_calculate_rogue(
 )
 }
 \arguments{
-\item{x}{A Seurat object containing a \code{counts} layer.}
+\item{x}{A Seurat object with a \code{counts} layer.}
 
-\item{cluster}{A character vector of one or more clustering columns in the metadata (\code{x@meta.data}).
-If multiple, calculates mean ROGUE per column and identifies the elbow/knee point.}
+\item{clusters}{\emph{(optional)} Character vector of metadata column names containing clustering info.
+If provided, \code{label} must also be provided.}
 
-\item{sample}{\emph{(Optional)} Column name indicating sample identity; required for per-cluster ROGUE.}
+\item{label}{\emph{(optional)} A metadata column name specifying sample identity. Required when \code{clusters} is used.}
 
-\item{span}{Smoothing parameter for \code{\link[ROGUE:rogue]{ROGUE::rogue()}} when \code{sample} is used. Default: \code{0.9}.}
+\item{span}{Smoothing parameter used in \code{ROGUE::rogue()} when \code{clusters} and \code{label} are used. Default is \code{0.9}.}
 
-\item{min_cells}{Minimum number of cells a gene must be expressed in. Default: \code{10}.}
+\item{min_cells}{Minimum number of cells a gene must be detected in. Default: \code{10}.}
 
-\item{min_genes}{Minimum number of genes a cell must express. Default: \code{10}.}
+\item{min_genes}{Minimum number of genes each cell must express. Default: \code{10}.}
 
-\item{platform}{Either \code{"UMI"} (droplet-based) or \code{"full-length"} (SMART-seq, etc.).}
+\item{platform}{Character string, either \code{"UMI"} or \code{"full-length"} to match sequencing platform. Default: \code{"UMI"}.}
 
-\item{cutoff}{Adjusted p-value cutoff for \code{\link[ROGUE:CalculateRogue]{ROGUE::CalculateRogue()}}. Default: \code{0.05}.}
+\item{cutoff}{Adjusted p-value threshold for \code{CalculateRogue}. Default: \code{0.05}.}
 
-\item{features}{\emph{(Optional)} Character vector of gene names to use. If \code{NULL}, all filtered genes are used.}
+\item{features}{Optional gene list to use for scoring.}
 
-\item{verbose}{Whether to show progress messages. Default: \code{TRUE}.}
+\item{verbose}{Logical, whether to print messages. Default: \code{TRUE}.}
 }
 \value{
-A \code{data.frame} with ROGUE results:
+A \code{data.frame} containing:
 \itemize{
-\item For \strong{multi-resolution comparison}:
-Returns columns: \code{cluster}, \code{average_rogue}, \code{is_knee_point}.
-\item For \strong{per-cluster analysis}:
-Returns per-cluster ROGUE scores.
-\item For \strong{global} (no cluster):
-Returns ROGUE score vector.
+\item \code{label}: Sample identity or "All"
+\item \code{cluster}: Cluster identity
+\item \code{score}: ROGUE score
+\item \code{group}: Source of the score (for faceting)
 }
 }
 \description{
-Computes entropy-based \strong{ROGUE} scores to assess cluster purity from a Seurat object.
-This function supports three usage modes:
+Computes \strong{ROGUE} (entropy-based) scores to evaluate cell population purity
+from a Seurat object. Supports both global and per-cluster ROGUE computation.
 }
 \details{
+\subsection{Modes:}{
 \itemize{
-\item \strong{Full dataset ROGUE} calculation (no cluster provided)
-\item \strong{Per-cluster ROGUE} (when both \code{cluster} and \code{sample} are provided)
-\item \strong{Multi-resolution ROGUE comparison}, using multiple \code{cluster} columns
+\item If \code{clusters} and \code{label} are both \code{NULL}, computes global ROGUE score across all cells.
+\item If both are provided, computes per-cluster ROGUE scores across samples.
 }
-
-The \strong{ROGUE} (Relative entropy Of Gene Usage Entropy) score quantifies the homogeneity of a cell population
-using Shannon entropy. High ROGUE scores indicate purer (i.e., less heterogeneous) cell groups.
-
-This function wraps around:
-\itemize{
-\item \code{\link[ROGUE:SE_fun]{ROGUE::SE_fun()}}
-\item \code{\link[ROGUE:CalculateRogue]{ROGUE::CalculateRogue()}}
-\item \code{\link[ROGUE:rogue]{ROGUE::rogue()}}
 }
 }
 \examples{
 \dontrun{
-library(Seurat)
-seurat_obj <- CreateSeuratObject(counts = example_matrix)
-seurat_obj <- FindClusters(seurat_obj, resolution = c(0.2, 0.4, 0.6))
-
-# Multi-resolution comparison
-sn_calculate_rogue(seurat_obj, cluster = c("RNA_snn_res.0.2", "RNA_snn_res.0.4", "RNA_snn_res.0.6"))
-
-# Per-cluster ROGUE
-sn_calculate_rogue(seurat_obj, cluster = "seurat_clusters", sample = "sample_id")
-
-# Global ROGUE
+# Global ROGUE score
 sn_calculate_rogue(seurat_obj)
+
+# Per-cluster ROGUE score
+sn_calculate_rogue(seurat_obj, clusters = "seurat_clusters", label = "sample")
+
+# Multiple clustering resolutions
+sn_calculate_rogue(seurat_obj, clusters = c("res_0.4", "res_1.0"), label = "sample")
 }
 
 }
