@@ -171,19 +171,15 @@ sn_run_pyscenic <- function(x,
   check_installed_github(pkg = "ShennongTools", repo = "zerostwo/shennong-tools")
 
   if (species == "human") {
-    tfs_fname <- tfs_fname %||% "/mnt/resources/cistarget/tf_lists/allTFs_hg38.txt"
-    database_fname <- database_fname %||% c(
-      "/mnt/resources/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather",
-      "/mnt/resources/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc_v10_clust/gene_based/hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather"
-    )
-    annotations_fname <- annotations_fname %||% "/mnt/resources/cistarget/motif2tf/motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl"
+    cistarget_resources <- sn_fetch_cistarget_resources(species = "human")
+    tfs_fname <- tfs_fname %||% cistarget_resources$tf_list
+    database_fname <- database_fname %||% cistarget_resources$databases
+    annotations_fname <- annotations_fname %||% cistarget_resources$motif2tf
   } else if (species == "mouse") {
-    tfs_fname <- tfs_fname %||% "/mnt/resources/cistarget/tf_lists/allTFs_mm.txt"
-    database_fname <- database_fname %||% c(
-      "/mnt/resources/cistarget/databases/mus_musculus/mm10/refseq_r80/mc_v10_clust/gene_based/mm10_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather",
-      "/mnt/resources/cistarget/databases/mus_musculus/mm10/refseq_r80/mc_v10_clust/gene_based/mm10_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather"
-    )
-    annotations_fname <- annotations_fname %||% "/mnt/resources/cistarget/motif2tf/motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl"
+    cistarget_resources <- sn_fetch_cistarget_resources(species = "mouse")
+    tfs_fname <- tfs_fname %||% cistarget_resources$tf_list
+    database_fname <- database_fname %||% cistarget_resources$databases
+    annotations_fname <- annotations_fname %||% cistarget_resources$motif2tf
   } else {
     stop("Please check if the species is human or mouse!")
   }
