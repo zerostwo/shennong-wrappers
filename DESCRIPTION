@@ -16,17 +16,22 @@ Encoding: UTF-8
 LazyData: true
 Imports: 
     cli,
+    data.table,
+    fs,
     glue,
     Matrix,
     pak,
     rlang,
     utils
 Remotes: 
-    PaulingLiu/ROGUE
+    PaulingLiu/ROGUE,
+    zerostwo/shennong-tools
 RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 Depends: 
     R (>= 4.1.0)
 Suggests: 
-    ROGUE (>= 1.0),
-    SeuratObject
+    clusterProfiler,
+    ROGUE,
+    SeuratObject,
+    ShennongTools
